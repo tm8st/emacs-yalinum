@@ -3,7 +3,7 @@
 ;; Copyright (C) 2010 tm8st
 
 ;; Author: tm8st <tm8st@hotmail.co.jp>
-(defconst yalinum-version "0.1")
+(defconst yalinum-version "0.2")
 ;; Keywords: convenience, linum, line, number
 
 ;; This file is free software; you can redistribute it and/or modify
@@ -33,6 +33,10 @@
 ;; (require 'yalinum)
 ;; (global-yalinum-mode t)
 
+;; ChangeLog
+;; yalinum-formatを追加。
+;; linum.el 0.9にあったlinum-formatをベースに使っている。
+
 ;;; Code:
 
 (defvar yalinum-overlays nil "Overlays used in this buffer.")
@@ -43,26 +47,16 @@
 (defcustom yalinum-line-number-length-min 1
   "Line number length min."
   :group 'yalinum
-  :type 'integer
-  )
+  :type 'integer)
 
-(defcustom yalinum-width-base 1
-  "Line number length offset."
+(defcustom yalinum-format 'dynamic
+  "Format used to display line numbers.
+Either a format string like \"%7d\", `dynamic' to adapt the width
+as needed, or a function that is called with a line number as its
+argument and should evaluate to a string to be shown on that line.
+See also `linum-before-numbering-hook'."
   :group 'yalinum
-  :type 'integer
-  )
-
-(defcustom yalinum-width-scale 0.5
-  "Line number length to margin space scale."
-  :group 'yalinum
-  :type 'float
-  )
-
-(defcustom yalinum-line-number-display-format " %0$numd"
-  "Line number display format. replace $num by line number."
-  :group 'yalinum
-  :type 'string
-  )
+  :type 'sexp)
 
 (mapc #'make-variable-buffer-local '(yalinum-overlays yalinum-available))
 
@@ -161,18 +155,15 @@ and you have to scroll or press \\[recenter-top-bottom] to update the numbers."
     (let* ((top-line (count-lines (point) (point-min)))
 	   (line-max (count-lines (point-min) (point-max)))
 	   ;; avoid zero divide.
-	   (start-line (+ top-line (* (/ (float top-line) (max 1 line-max)) (window-height win))))
-	   )
+	   (start-line (+ top-line (* (/ (float top-line) (max 1 line-max)) (window-height win)))))
       (goto-char (window-start win))
       (let* ((line (line-number-at-pos))
 	     (limit (window-end win t))
-	     (fmt
-	      (let ((w (length (number-to-string line-max))))
-		;; replace format string.
-		(replace-regexp-in-string
-		 "\\$num"
-		 (number-to-string (max w yalinum-line-number-length-min))
-		 yalinum-line-number-display-format)))
+	     (fmt (cond ((stringp yalinum-format) yalinum-format)
+                   ((eq yalinum-format 'dynamic)
+                    (let ((w (length (number-to-string
+                                      (count-lines (point-min) (point-max))))))
+                      (concat "%" (number-to-string w) "d")))))
 	     (width 0)
 	     ;; calc bar variables.
 	     (bar-height (max 1 (truncate (* (/ (window-height win) (float (max 1 line-max))) (window-height win)))))
@@ -210,7 +201,7 @@ and you have to scroll or press \\[recenter-top-bottom] to update the numbers."
 	  (let ((inhibit-point-motion-hooks t))
 	    (forward-line))
 	  (setq line (1+ line)))
-	(set-window-margins win (truncate (* (+ width yalinum-width-base) yalinum-width-scale)))      
+    (set-window-margins win width (cdr (window-margins win)))
 	))))
 
 (defun yalinum-after-change (beg end len)
