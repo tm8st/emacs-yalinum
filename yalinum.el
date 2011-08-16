@@ -3,7 +3,7 @@
 ;; Copyright (C) 2010 tm8st
 
 ;; Author: tm8st <tm8st@hotmail.co.jp>
-(defconst yalinum-version "0.2")
+(defconst yalinum-version "0.3")
 ;; Keywords: convenience, linum, line, number
 
 ;; This file is free software; you can redistribute it and/or modify
@@ -32,10 +32,6 @@
 
 ;; (require 'yalinum)
 ;; (global-yalinum-mode t)
-
-;; ChangeLog
-;; yalinum-formatを追加。
-;; linum.el 0.9にあったlinum-formatをベースに使っている。
 
 ;;; Code:
 
@@ -92,6 +88,7 @@ and you have to scroll or press \\[recenter-top-bottom] to update the numbers."
   :lighter ""                           ; for desktop.el
   (if yalinum-mode
       (progn
+
         (if yalinum-eager
             (add-hook 'post-command-hook (if yalinum-delay
                                              'yalinum-schedule
@@ -108,14 +105,15 @@ and you have to scroll or press \\[recenter-top-bottom] to update the numbers."
                   ;; something like yalinum-update-window instead.
                   'yalinum-update-current nil t)
         (yalinum-update-current))
-    (remove-hook 'post-command-hook 'yalinum-update-current t)
-    (remove-hook 'post-command-hook 'yalinum-schedule t)
-    ;; (remove-hook 'window-size-change-functions 'yalinum-after-size t)
-    (remove-hook 'window-scroll-functions 'yalinum-after-scroll t)
-    (remove-hook 'after-change-functions 'yalinum-after-change t)
-    (remove-hook 'window-configuration-change-hook 'yalinum-update-current t)
-    (remove-hook 'change-major-mode-hook 'yalinum-delete-overlays t)
-    (yalinum-delete-overlays)))
+    (progn
+      (remove-hook 'post-command-hook 'yalinum-update-current t)
+      (remove-hook 'post-command-hook 'yalinum-schedule t)
+      ;; (remove-hook 'window-size-change-functions 'yalinum-after-size t)
+      (remove-hook 'window-scroll-functions 'yalinum-after-scroll t)
+      (remove-hook 'after-change-functions 'yalinum-after-change t)
+      (remove-hook 'window-configuration-change-hook 'yalinum-update-current t)
+      (remove-hook 'change-major-mode-hook 'yalinum-delete-overlays t)
+      (yalinum-delete-overlays))))
 
 ;;;###autoload
 (define-globalized-minor-mode global-yalinum-mode yalinum-mode yalinum-on)
@@ -151,7 +149,7 @@ and you have to scroll or press \\[recenter-top-bottom] to update the numbers."
   "Update line numbers for the portion visible in window WIN."
   ;; calc position in window.
   (save-excursion
-    (move-to-window-line 0)
+            (goto-char (window-start win))
     (let* ((top-line (count-lines (point) (point-min)))
 	   (line-max (count-lines (point-min) (point-max)))
 	   ;; avoid zero divide.
