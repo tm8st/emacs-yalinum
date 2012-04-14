@@ -3,7 +3,7 @@
 ;; Copyright (C) 2010 tm8st
 
 ;; Author: tm8st <tm8st@hotmail.co.jp>
-(defconst yalinum-version "0.3")
+(defconst yalinum-version "0.4")
 ;; Keywords: convenience, linum, line, number
 
 ;; This file is free software; you can redistribute it and/or modify
@@ -70,6 +70,11 @@ See also `linum-before-numbering-hook'."
   "Face for displaying scroll bar and line numbers in the display margin."
   :group 'yalinum)
 
+(defface yalinum-track-face
+  '((t (:inherit yalinum-face)))
+  "Face for displaying scroll bar track and line numbers in the display margin."
+  :group 'yalinum)
+
 (defcustom yalinum-eager t
   "Whether line numbers should be updated after each command.
 The conservative setting `nil' might miss some buffer changes,
@@ -81,6 +86,13 @@ and you have to scroll or press \\[recenter-top-bottom] to update the numbers."
   "Delay updates to give Emacs a chance for other changes."
   :group 'yalinum
   :type 'boolean)
+
+(defcustom yalinum-bar-style 'full
+  "A style of the scroll bar. Possible value is 'full to show over all characters,
+'left to show over left 1 character, or 'right to show over right 1 character."
+  :group 'yalinum
+  :type 'symbol
+  )
 
 ;;;###autoload
 (define-minor-mode yalinum-mode
@@ -166,17 +178,30 @@ and you have to scroll or press \\[recenter-top-bottom] to update the numbers."
 	     ;; calc bar variables.
 	     (bar-height (max 1 (truncate (* (/ (window-height win) (float (max 1 line-max))) (window-height win)))))
 	     (bar-min (min (max start-line 0) (- line-max bar-height)))
-	     (bar-max (min line-max (+ bar-min bar-height))))
+	     (bar-max (min line-max (+ bar-min bar-height)))
+         (bar-pos (cond ((eq yalinum-bar-style 'left) 1)
+                        ((eq yalinum-bar-style 'right) -1)
+                        (t 0))))
 	(run-hooks 'yalinum-before-numbering-hook)
 	;; Create an overlay (or reuse an existing one) for each
 	;; line visible in this window, if necessary.
 	(while (and (not (eobp)) (<= (point) limit))
-	  (let* ((str (if fmt
-			  (propertize (format fmt line)
-				      'face
-				      (if (and (>= line bar-min) (<= line bar-max))
-					  'yalinum-bar-face
-					'yalinum-face))))
+	  (let* ((text (format fmt line))
+             (left-part (substring text 0 bar-pos))
+             (right-part (substring text bar-pos nil))
+             (bar-part (propertize
+                        (if (eq yalinum-bar-style 'left)
+                            left-part right-part)
+                        'face
+                        (if (and (>= line bar-min) (<= line bar-max))
+                            'yalinum-bar-face 'yalinum-track-face)))
+             (rest-part (propertize
+                         (if (eq yalinum-bar-style 'left)
+                             right-part left-part)
+                         'face 'yalinum-face))
+             (str (if (eq yalinum-bar-style 'left)
+                      (concat bar-part rest-part)
+                    (concat rest-part bar-part)))
 		 (visited (catch 'visited
 			    (dolist (o (overlays-in (point) (point)))
 			      (when (equal-including-properties
