@@ -3,7 +3,7 @@
 ;; Copyright (C) 2010 tm8st
 
 ;; Author: tm8st <tm8st@hotmail.co.jp>
-(defconst yalinum-version "0.1")
+(defconst yalinum-version "0.4")
 ;; Keywords: convenience, linum, line, number
 
 ;; This file is free software; you can redistribute it and/or modify
@@ -43,26 +43,16 @@
 (defcustom yalinum-line-number-length-min 1
   "Line number length min."
   :group 'yalinum
-  :type 'integer
-  )
+  :type 'integer)
 
-(defcustom yalinum-width-base 1
-  "Line number length offset."
+(defcustom yalinum-format 'dynamic
+  "Format used to display line numbers.
+Either a format string like \"%7d\", `dynamic' to adapt the width
+as needed, or a function that is called with a line number as its
+argument and should evaluate to a string to be shown on that line.
+See also `linum-before-numbering-hook'."
   :group 'yalinum
-  :type 'integer
-  )
-
-(defcustom yalinum-width-scale 0.5
-  "Line number length to margin space scale."
-  :group 'yalinum
-  :type 'float
-  )
-
-(defcustom yalinum-line-number-display-format " %0$numd"
-  "Line number display format. replace $num by line number."
-  :group 'yalinum
-  :type 'string
-  )
+  :type 'sexp)
 
 (mapc #'make-variable-buffer-local '(yalinum-overlays yalinum-available))
 
@@ -80,6 +70,11 @@
   "Face for displaying scroll bar and line numbers in the display margin."
   :group 'yalinum)
 
+(defface yalinum-track-face
+  '((t (:inherit yalinum-face)))
+  "Face for displaying scroll bar track and line numbers in the display margin."
+  :group 'yalinum)
+
 (defcustom yalinum-eager t
   "Whether line numbers should be updated after each command.
 The conservative setting `nil' might miss some buffer changes,
@@ -92,12 +87,20 @@ and you have to scroll or press \\[recenter-top-bottom] to update the numbers."
   :group 'yalinum
   :type 'boolean)
 
+(defcustom yalinum-bar-style 'full
+  "A style of the scroll bar. Possible value is 'full to show over all characters,
+'left to show over left 1 character, or 'right to show over right 1 character."
+  :group 'yalinum
+  :type 'symbol
+  )
+
 ;;;###autoload
 (define-minor-mode yalinum-mode
   "Toggle display of line numbers in the left margin."
   :lighter ""                           ; for desktop.el
   (if yalinum-mode
       (progn
+
         (if yalinum-eager
             (add-hook 'post-command-hook (if yalinum-delay
                                              'yalinum-schedule
@@ -114,14 +117,15 @@ and you have to scroll or press \\[recenter-top-bottom] to update the numbers."
                   ;; something like yalinum-update-window instead.
                   'yalinum-update-current nil t)
         (yalinum-update-current))
-    (remove-hook 'post-command-hook 'yalinum-update-current t)
-    (remove-hook 'post-command-hook 'yalinum-schedule t)
-    ;; (remove-hook 'window-size-change-functions 'yalinum-after-size t)
-    (remove-hook 'window-scroll-functions 'yalinum-after-scroll t)
-    (remove-hook 'after-change-functions 'yalinum-after-change t)
-    (remove-hook 'window-configuration-change-hook 'yalinum-update-current t)
-    (remove-hook 'change-major-mode-hook 'yalinum-delete-overlays t)
-    (yalinum-delete-overlays)))
+    (progn
+      (remove-hook 'post-command-hook 'yalinum-update-current t)
+      (remove-hook 'post-command-hook 'yalinum-schedule t)
+      ;; (remove-hook 'window-size-change-functions 'yalinum-after-size t)
+      (remove-hook 'window-scroll-functions 'yalinum-after-scroll t)
+      (remove-hook 'after-change-functions 'yalinum-after-change t)
+      (remove-hook 'window-configuration-change-hook 'yalinum-update-current t)
+      (remove-hook 'change-major-mode-hook 'yalinum-delete-overlays t)
+      (yalinum-delete-overlays))))
 
 ;;;###autoload
 (define-globalized-minor-mode global-yalinum-mode yalinum-mode yalinum-on)
@@ -157,37 +161,47 @@ and you have to scroll or press \\[recenter-top-bottom] to update the numbers."
   "Update line numbers for the portion visible in window WIN."
   ;; calc position in window.
   (save-excursion
-    (move-to-window-line 0)
+            (goto-char (window-start win))
     (let* ((top-line (count-lines (point) (point-min)))
 	   (line-max (count-lines (point-min) (point-max)))
 	   ;; avoid zero divide.
-	   (start-line (+ top-line (* (/ (float top-line) (max 1 line-max)) (window-height win))))
-	   )
+	   (start-line (+ top-line (* (/ (float top-line) (max 1 line-max)) (window-height win)))))
       (goto-char (window-start win))
       (let* ((line (line-number-at-pos))
 	     (limit (window-end win t))
-	     (fmt
-	      (let ((w (length (number-to-string line-max))))
-		;; replace format string.
-		(replace-regexp-in-string
-		 "\\$num"
-		 (number-to-string (max w yalinum-line-number-length-min))
-		 yalinum-line-number-display-format)))
+	     (fmt (cond ((stringp yalinum-format) yalinum-format)
+                   ((eq yalinum-format 'dynamic)
+                    (let ((w (length (number-to-string
+                                      (count-lines (point-min) (point-max))))))
+                      (concat "%" (number-to-string w) "d")))))
 	     (width 0)
 	     ;; calc bar variables.
 	     (bar-height (max 1 (truncate (* (/ (window-height win) (float (max 1 line-max))) (window-height win)))))
 	     (bar-min (min (max start-line 0) (- line-max bar-height)))
-	     (bar-max (min line-max (+ bar-min bar-height))))
+	     (bar-max (min line-max (+ bar-min bar-height)))
+         (bar-pos (cond ((eq yalinum-bar-style 'left) 1)
+                        ((eq yalinum-bar-style 'right) -1)
+                        (t 0))))
 	(run-hooks 'yalinum-before-numbering-hook)
 	;; Create an overlay (or reuse an existing one) for each
 	;; line visible in this window, if necessary.
 	(while (and (not (eobp)) (<= (point) limit))
-	  (let* ((str (if fmt
-			  (propertize (format fmt line)
-				      'face
-				      (if (and (>= line bar-min) (<= line bar-max))
-					  'yalinum-bar-face
-					'yalinum-face))))
+	  (let* ((text (format fmt line))
+             (left-part (substring text 0 bar-pos))
+             (right-part (substring text bar-pos nil))
+             (bar-part (propertize
+                        (if (eq yalinum-bar-style 'left)
+                            left-part right-part)
+                        'face
+                        (if (and (>= line bar-min) (<= line bar-max))
+                            'yalinum-bar-face 'yalinum-track-face)))
+             (rest-part (propertize
+                         (if (eq yalinum-bar-style 'left)
+                             right-part left-part)
+                         'face 'yalinum-face))
+             (str (if (eq yalinum-bar-style 'left)
+                      (concat bar-part rest-part)
+                    (concat rest-part bar-part)))
 		 (visited (catch 'visited
 			    (dolist (o (overlays-in (point) (point)))
 			      (when (equal-including-properties
@@ -210,7 +224,7 @@ and you have to scroll or press \\[recenter-top-bottom] to update the numbers."
 	  (let ((inhibit-point-motion-hooks t))
 	    (forward-line))
 	  (setq line (1+ line)))
-	(set-window-margins win (truncate (* (+ width yalinum-width-base) yalinum-width-scale)))      
+    (set-window-margins win width (cdr (window-margins win)))
 	))))
 
 (defun yalinum-after-change (beg end len)
