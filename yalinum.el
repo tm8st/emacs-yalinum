@@ -3,8 +3,8 @@
 ;; Copyright (C) 2010 tm8st
 
 ;; Author: tm8st <tm8st@hotmail.co.jp>
-(defconst yalinum-version "0.4")
-;; Keywords: convenience, linum, line, number
+;; Version: 0.0.4
+;; Keywords: convenience, tools
 
 ;; This file is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
